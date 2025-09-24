@@ -1,0 +1,74 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+    
+    - name: Configure Docker
+      run: gcloud auth configure-docker
+    
+    - name: Create Service Account Key
+      run: |
+        cd apps/backend
+        echo '${{ secrets.GCP_SA_KEY }}' > serviceAccountKey.json
+    
+    - name: Build and Push Backend
+      run: |
+        cd apps/backend
+        docker build -f Dockerfile.gcp -t gcr.io/enquest-app/enquest-backend .
+        docker push gcr.io/enquest-app/enquest-backend
+    
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy enquest-backend \
+          --image gcr.io/enquest-app/enquest-backend \
+          --region asia-northeast1 \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 1Gi \
+          --cpu 1 \
+          --set-env-vars NODE_ENV=production \
+          --project enquest-app
+    
+    - name: Get Backend URL
+      id: backend-url
+      run: |
+        BACKEND_URL=$(gcloud run services describe enquest-backend --region=asia-northeast1 --project=enquest-app --format='value(status.url)')
+        echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+    
+    - name: Build Frontend
+      run: |
+        cd apps/frontend
+        npm ci
+        npm run build
+        npm run export
+      env:
+        NEXT_PUBLIC_API_URL: ${{ steps.backend-url.outputs.url }}
+    
+    - name: Deploy to Firebase
+      uses: FirebaseExtended/action-hosting-deploy@v0
+      with:
+        repoToken: '${{ secrets.GITHUB_TOKEN }}'
+        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+        projectId: enquest-app
+        entryPoint: './apps/frontend'

@@ -1,0 +1,44 @@
+# Cloud Build設定
+steps:
+  # Backend Build & Deploy
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/enquest-backend', './apps/backend']
+  
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/enquest-backend']
+  
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args: [
+      'run', 'deploy', 'enquest-backend',
+      '--image', 'gcr.io/$PROJECT_ID/enquest-backend',
+      '--region', 'asia-northeast1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '8000',
+      '--memory', '1Gi',
+      '--cpu', '1',
+      '--set-secrets', 'SERVICE_ACCOUNT_KEY=firebase-admin-key:latest'
+    ]
+
+  # Frontend Build
+  - name: 'node:18'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        cd apps/frontend
+        npm ci
+        npm run build
+    env:
+      - 'NEXT_PUBLIC_API_URL=https://enquest-backend-$PROJECT_ID.a.run.app'
+      - 'NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY}'
+      - 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}'
+      - 'NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID}'
+      - 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}'
+      - 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}'
+      - 'NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID}'
+
+  # Firebase Deploy (optional)
+  # - name: 'gcr.io/$PROJECT_ID/firebase'
+  #   args: ['deploy', '--only', 'hosting']
+  #   dir: 'apps/frontend'

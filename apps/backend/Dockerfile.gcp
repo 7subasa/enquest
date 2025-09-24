@@ -1,0 +1,28 @@
+FROM node:18-alpine
+
+WORKDIR /usr/src/app
+
+# パッケージファイルをコピー
+COPY package*.json ./
+
+# 依存関係をインストール
+RUN npm ci --only=production
+
+# アプリケーションコードをコピー
+COPY . .
+
+# TypeScriptをビルド
+RUN npm run build
+
+# サービスアカウントキーをコピー
+COPY serviceAccountKey.json ./
+
+# ポート8080を公開（Cloud Run要件）
+EXPOSE 8080
+
+# 環境変数設定
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# アプリケーション起動
+CMD ["npm", "start"]
